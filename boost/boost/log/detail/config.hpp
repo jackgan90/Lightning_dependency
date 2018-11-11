@@ -27,7 +27,7 @@
 
 // Try including WinAPI config as soon as possible so that any other headers don't include Windows SDK headers
 #if defined(BOOST_OS_WINDOWS_AVAILABLE)
-#include <boost/detail/winapi/config.hpp>
+#include <boost/winapi/config.hpp>
 #endif
 
 #include <limits.h> // To bring in libc macros
@@ -114,6 +114,19 @@
 #if defined(__CYGWIN__)
     // Boost.ASIO is broken on Cygwin
 #   define BOOST_LOG_NO_ASIO
+#endif
+
+#if defined(__VXWORKS__)
+#   define BOOST_LOG_NO_GETPGRP
+#   define BOOST_LOG_NO_GETSID
+    // for _WRS_CONFIG_USER_MANAGEMENT used below
+#   include <vsbConfig.h>
+#endif
+
+#if (!defined(__CRYSTAX__) && defined(__ANDROID__) && (__ANDROID_API__+0) < 21) \
+     || (defined(__VXWORKS__) && !defined(_WRS_CONFIG_USER_MANAGEMENT))
+// Until Android API version 21 Google NDK does not provide getpwuid_r
+#    define BOOST_LOG_NO_GETPWUID_R
 #endif
 
 #if !defined(BOOST_LOG_USE_NATIVE_SYSLOG) && defined(BOOST_LOG_NO_ASIO)
@@ -204,18 +217,14 @@
 #   define BOOST_LOG_NORETURN
 #endif
 
-// GCC and compatible compilers may require marking types that may alias other types
-#if defined(__GNUC__)
-#   define BOOST_LOG_MAY_ALIAS __attribute__ ((__may_alias__))
-#else
-#   define BOOST_LOG_MAY_ALIAS
-#endif
+// Some compilers may require marking types that may alias other types
+#define BOOST_LOG_MAY_ALIAS BOOST_MAY_ALIAS
 
 #if !defined(BOOST_LOG_BUILDING_THE_LIB)
 
 // Detect if we're dealing with dll
 #   if defined(BOOST_LOG_DYN_LINK) || defined(BOOST_ALL_DYN_LINK)
-#        define BOOST_LOG_DLL
+#       define BOOST_LOG_DLL
 #   endif
 
 #   if defined(BOOST_LOG_DLL)
@@ -301,7 +310,13 @@
 
 #ifndef BOOST_LOG_CPU_CACHE_LINE_SIZE
 //! The macro defines the CPU cache line size for the target architecture. This is mostly used for optimization.
+#if defined(__s390__) || defined(__s390x__)
+#define BOOST_LOG_CPU_CACHE_LINE_SIZE 256
+#elif defined(powerpc) || defined(__powerpc__) || defined(__ppc__)
+#define BOOST_LOG_CPU_CACHE_LINE_SIZE 128
+#else
 #define BOOST_LOG_CPU_CACHE_LINE_SIZE 64
+#endif
 #endif
 
 namespace boost {
@@ -348,9 +363,16 @@ namespace log {
 #   if !defined(BOOST_NO_CXX11_INLINE_NAMESPACES)
 
 inline namespace BOOST_LOG_VERSION_NAMESPACE {}
-}
 
 #       define BOOST_LOG_OPEN_NAMESPACE namespace log { inline namespace BOOST_LOG_VERSION_NAMESPACE {
+#       define BOOST_LOG_CLOSE_NAMESPACE }}
+
+#   elif defined(BOOST_GCC) && (BOOST_GCC+0) >= 40400
+
+// GCC 7 deprecated strong using directives but allows inline namespaces in C++03 mode since GCC 4.4.
+__extension__ inline namespace BOOST_LOG_VERSION_NAMESPACE {}
+
+#       define BOOST_LOG_OPEN_NAMESPACE namespace log { __extension__ inline namespace BOOST_LOG_VERSION_NAMESPACE {
 #       define BOOST_LOG_CLOSE_NAMESPACE }}
 
 #   else
@@ -363,11 +385,11 @@ __attribute__((__strong__))
 #       endif
 ;
 
-}
-
 #       define BOOST_LOG_OPEN_NAMESPACE namespace log { namespace BOOST_LOG_VERSION_NAMESPACE {
 #       define BOOST_LOG_CLOSE_NAMESPACE }}
 #   endif
+
+} // namespace log
 
 #else // !defined(BOOST_LOG_DOXYGEN_PASS)
 

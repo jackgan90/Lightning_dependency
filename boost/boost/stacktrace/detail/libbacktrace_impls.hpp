@@ -1,4 +1,4 @@
-// Copyright Antony Polukhin, 2016-2017.
+// Copyright Antony Polukhin, 2016-2018.
 //
 // Distributed under the Boost Software License, Version 1.0. (See
 // accompanying file LICENSE_1_0.txt or copy at
@@ -13,8 +13,9 @@
 #endif
 
 #include <boost/stacktrace/detail/to_hex_array.hpp>
+#include <boost/stacktrace/detail/to_dec_array.hpp>
+#include <boost/stacktrace/detail/location_from_symbol.hpp>
 #include <boost/core/demangle.hpp>
-#include <boost/lexical_cast.hpp>
 
 #include <backtrace.h>
 
@@ -44,9 +45,11 @@ inline void libbacktrace_error_callback(void* /*data*/, const char* /*msg*/, int
 }
 
 
-extern inline ::backtrace_state* construct_state() BOOST_NOEXCEPT {
+inline ::backtrace_state* construct_state(const program_location& prog_location) BOOST_NOEXCEPT {
+    // Currently `backtrace_create_state` can not detect file name on Windows https://gcc.gnu.org/bugzilla/show_bug.cgi?id=82543
+    // That's why we provide a `prog_location` here.
     return ::backtrace_create_state(
-        0, 0 /*thread-safe*/, boost::stacktrace::detail::libbacktrace_error_callback, 0
+        prog_location.name(), 0 /*thread-safe*/, boost::stacktrace::detail::libbacktrace_error_callback, 0
     );
 
     // TODO: this does not seem to work well when this function is in .so:
@@ -69,6 +72,7 @@ extern inline ::backtrace_state* construct_state() BOOST_NOEXCEPT {
 
 struct to_string_using_backtrace {
     std::string res;
+    boost::stacktrace::detail::program_location prog_location;
     ::backtrace_state* state;
     std::string filename;
     std::size_t line;
@@ -95,12 +99,12 @@ struct to_string_using_backtrace {
         res += " at ";
         res += filename;
         res += ':';
-        res += boost::lexical_cast<boost::array<char, 40> >(line).data();
+        res += boost::stacktrace::detail::to_dec_array(line).data();
         return true;
     }
 
     to_string_using_backtrace() BOOST_NOEXCEPT {
-        state = boost::stacktrace::detail::construct_state();
+        state = boost::stacktrace::detail::construct_state(prog_location);
     }
 };
 
@@ -110,7 +114,8 @@ typedef to_string_impl_base<to_string_using_backtrace> to_string_impl;
 inline std::string name_impl(const void* addr) {
     std::string res;
 
-    ::backtrace_state* state = boost::stacktrace::detail::construct_state();
+    boost::stacktrace::detail::program_location prog_location;
+    ::backtrace_state* state = boost::stacktrace::detail::construct_state(prog_location);
 
     boost::stacktrace::detail::pc_data data = {&res, 0, 0};
     if (state) {
@@ -134,7 +139,8 @@ inline std::string name_impl(const void* addr) {
 std::string frame::source_file() const {
     std::string res;
 
-    ::backtrace_state* state = boost::stacktrace::detail::construct_state();
+    boost::stacktrace::detail::program_location prog_location;
+    ::backtrace_state* state = boost::stacktrace::detail::construct_state(prog_location);
 
     boost::stacktrace::detail::pc_data data = {0, &res, 0};
     if (state) {
@@ -151,7 +157,8 @@ std::string frame::source_file() const {
 }
 
 std::size_t frame::source_line() const {
-    ::backtrace_state* state = boost::stacktrace::detail::construct_state();
+    boost::stacktrace::detail::program_location prog_location;
+    ::backtrace_state* state = boost::stacktrace::detail::construct_state(prog_location);
 
     boost::stacktrace::detail::pc_data data = {0, 0, 0};
     if (state) {

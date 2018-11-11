@@ -91,7 +91,11 @@ class BOOST_SYMBOL_VISIBLE singleton_module :
     public boost::noncopyable
 {
 private:
-    BOOST_SERIALIZATION_DECL BOOST_DLLEXPORT static bool & get_lock() BOOST_USED;
+    BOOST_DLLEXPORT static bool & get_lock() BOOST_USED {
+        static bool lock = false;
+        return lock;
+    }
+
 public:
     BOOST_DLLEXPORT static void lock(){
         get_lock() = true;
@@ -116,15 +120,18 @@ private:
         // can be used
         class singleton_wrapper : public T {};
         static singleton_wrapper t;
+
         // refer to instance, causing it to be instantiated (and
         // initialized at startup on working compilers)
         BOOST_ASSERT(! is_destroyed());
+
         // note that the following is absolutely essential.
         // commenting out this statement will cause compilers to fail to
         // construct the instance at pre-execution time.  This would prevent
         // our usage/implementation of "locking" and introduce uncertainty into
         // the sequence of object initializaition.
         use(& m_instance);
+
         return static_cast<T &>(t);
     }
     static bool & get_is_destroyed(){
